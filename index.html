@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Hand Base Mesh Generator JS</title>
+    <link rel="stylesheet" href="style.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div>
+          <h1>Hand Base Mesh Generator JS</h1>
+          <p>Manual mode / OBJ topology ported from the Python PoC</p>
+        </div>
+        <button id="download" type="button" disabled>Download OBJ</button>
+      </header>
+
+      <section class="workspace">
+        <section class="panel controls">
+          <h2>Mesh Parameters</h2>
+          <label class="slider-row">
+            <span>指の太さ</span>
+            <input id="finger-width" type="range" min="50" max="180" step="5">
+            <strong id="finger-width-value"></strong>
+          </label>
+          <label class="slider-row">
+            <span>手の甲厚</span>
+            <input id="palm-thickness" type="range" min="40" max="160" step="5">
+            <strong id="palm-thickness-value"></strong>
+          </label>
+          <label class="slider-row">
+            <span>球体</span>
+            <input id="joint-radius" type="range" min="40" max="160" step="5">
+            <strong id="joint-radius-value"></strong>
+          </label>
+
+          <div class="button-row">
+            <button id="generate" type="button">Generate</button>
+            <button id="reset-landmarks" type="button">Reset Landmarks</button>
+          </div>
+
+          <h2>Manual Landmarks</h2>
+          <p class="note">21点のMediaPipe形式 [x, y, z] を入力します。Webカメラ/MediaPipeは今回未実装です。</p>
+          <textarea id="landmarks-json" spellcheck="false"></textarea>
+        </section>
+
+        <section class="panel preview">
+          <h2>Bone Preview</h2>
+          <canvas id="bone-preview" width="560" height="560"></canvas>
+          <div id="stats" class="stats"></div>
+          <p id="status" class="status"></p>
+        </section>
+      </section>
+
+      <section class="panel output">
+        <h2>OBJ Output</h2>
+        <textarea id="obj-output" readonly spellcheck="false"></textarea>
+      </section>
+    </main>
+
+    <script type="module" src="main.js"></script>
+  </body>
+</html>
