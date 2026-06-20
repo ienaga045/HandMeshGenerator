@@ -13,12 +13,12 @@ const MEDIAPIPE_BUNDLE_URL = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-visi
 const HAND_MODEL_URL = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
 
 const PRESETS = {
-  standard: { fingerWidth: 80, palmThickness: 100, jointRadius: 100 },
-  wide: { fingerWidth: 105, palmThickness: 105, jointRadius: 100 },
-  thickPalm: { fingerWidth: 80, palmThickness: 130, jointRadius: 100 },
-  slim: { fingerWidth: 65, palmThickness: 85, jointRadius: 90 },
-  longFinger: { fingerWidth: 75, palmThickness: 95, jointRadius: 95 },
-  smallJoint: { fingerWidth: 80, palmThickness: 100, jointRadius: 75 },
+  standard: { fingerLength: 100, fingerWidth: 80, palmThickness: 100, jointRadius: 100 },
+  wide: { fingerLength: 100, fingerWidth: 105, palmThickness: 105, jointRadius: 100 },
+  thickPalm: { fingerLength: 100, fingerWidth: 80, palmThickness: 130, jointRadius: 100 },
+  slim: { fingerLength: 100, fingerWidth: 65, palmThickness: 85, jointRadius: 90 },
+  longFinger: { fingerLength: 120, fingerWidth: 75, palmThickness: 95, jointRadius: 95 },
+  smallJoint: { fingerLength: 100, fingerWidth: 80, palmThickness: 100, jointRadius: 75 },
 };
 
 const elements = {
@@ -34,6 +34,10 @@ const elements = {
   download: document.querySelector("#download"),
   reset: document.querySelector("#reset"),
   status: document.querySelector("#status"),
+  fingerLength: document.querySelector("#finger-length"),
+  fingerWidth: document.querySelector("#finger-width"),
+  jointRadius: document.querySelector("#joint-radius"),
+  palmThickness: document.querySelector("#palm-thickness"),
   presetButtons: [...document.querySelectorAll(".preset-button")],
 };
 
@@ -50,6 +54,7 @@ function loadSettings() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
     return {
+      fingerLength: Number(saved.fingerLength ?? 100),
       fingerWidth: Number(saved.fingerWidth ?? DEFAULT_SETTINGS.fingerWidth),
       palmThickness: Number(saved.palmThickness ?? DEFAULT_SETTINGS.palmThickness),
       jointRadius: Number(saved.jointRadius ?? DEFAULT_SETTINGS.jointRadius),
@@ -57,7 +62,7 @@ function loadSettings() {
       facingMode: saved.facingMode ?? "user",
     };
   } catch {
-    return { ...DEFAULT_SETTINGS, targetHand: "Right", facingMode: "user" };
+    return { fingerLength: 100, ...DEFAULT_SETTINGS, targetHand: "Right", facingMode: "user" };
   }
 }
 
@@ -73,8 +78,71 @@ function targetHand() {
   return elements.handLeft.checked ? "Left" : "Right";
 }
 
+function sliderSettings() {
+  return {
+    fingerLength: Number(elements.fingerLength.value),
+    fingerWidth: Number(elements.fingerWidth.value),
+    palmThickness: Number(elements.palmThickness.value),
+    jointRadius: Number(elements.jointRadius.value),
+  };
+}
+
+function syncSlidersFromSettings() {
+  elements.fingerLength.value = currentSettings.fingerLength;
+  elements.fingerWidth.value = currentSettings.fingerWidth;
+  elements.palmThickness.value = currentSettings.palmThickness;
+  elements.jointRadius.value = currentSettings.jointRadius;
+}
+
 function setStatus(message) {
   elements.status.textContent = message;
+}
+
+function cameraErrorMessage(error) {
+  if (!window.isSecureContext) {
+    return "HTTPSまたはlocalhostで開いてください";
+  }
+  if (error.name === "NotAllowedError" || error.name === "SecurityError") {
+    return "カメラ使用が許可されていません";
+  }
+  if (error.name === "NotFoundError" || error.name === "DevicesNotFoundError") {
+    return "使用できるカメラが見つかりません";
+  }
+  if (error.name === "NotReadableError" || error.name === "TrackStartError") {
+    return "他のアプリがカメラを使用中の可能性があります";
+  }
+  if (error.name === "OverconstrainedError" || error.name === "ConstraintNotSatisfiedError") {
+    return "選択したカメラ条件で起動できません";
+  }
+  return `Camera error: ${error.message}`;
+}
+
+function adjustedLandmarks(rawLandmarks) {
+  const scale = Number(currentSettings.fingerLength ?? 100) / 100;
+  if (Math.abs(scale - 1) < 1e-6) {
+    return rawLandmarks.map((point) => [...point]);
+  }
+
+  const adjusted = rawLandmarks.map((point) => [...point]);
+  const chains = [
+    [1, 2, 3, 4],
+    [5, 6, 7, 8],
+    [9, 10, 11, 12],
+    [13, 14, 15, 16],
+    [17, 18, 19, 20],
+  ];
+
+  for (const chain of chains) {
+    const base = rawLandmarks[chain[0]];
+    for (const index of chain.slice(1)) {
+      adjusted[index] = [
+        base[0] + (rawLandmarks[index][0] - base[0]) * scale,
+        base[1] + (rawLandmarks[index][1] - base[1]) * scale,
+        base[2] + (rawLandmarks[index][2] - base[2]) * scale,
+      ];
+    }
+  }
+  return adjusted;
 }
 
 function withTimeout(promise, milliseconds, label) {
@@ -143,6 +211,23 @@ function cameraConstraints() {
   };
 }
 
+async function requestCameraStream() {
+  try {
+    return await navigator.mediaDevices.getUserMedia(cameraConstraints());
+  } catch (firstError) {
+    if (elements.cameraSelect.value) {
+      throw firstError;
+    }
+    setStatus("標準カメラで再試行中...");
+    try {
+      return await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    } catch (fallbackError) {
+      fallbackError.message = `${firstError.message} / fallback: ${fallbackError.message}`;
+      throw fallbackError;
+    }
+  }
+}
+
 async function startCamera() {
   if (!navigator.mediaDevices?.getUserMedia) {
     setStatus("このブラウザはカメラ入力に対応していません");
@@ -152,8 +237,10 @@ async function startCamera() {
   try {
     stopCamera();
     setStatus("カメラ起動中...");
-    cameraStream = await navigator.mediaDevices.getUserMedia(cameraConstraints());
+    cameraStream = await requestCameraStream();
     elements.video.srcObject = cameraStream;
+    elements.video.muted = true;
+    elements.video.playsInline = true;
     await elements.video.play();
     await refreshCameraList();
     elements.startCamera.disabled = true;
@@ -164,7 +251,7 @@ async function startCamera() {
     detectLoop();
   } catch (error) {
     stopCamera();
-    setStatus(`Camera error: ${error.message}`);
+    setStatus(cameraErrorMessage(error));
   }
 }
 
@@ -220,7 +307,7 @@ function detectLoop() {
       latestDetectedLandmarks = selectTargetHand(results);
       elements.captureCamera.disabled = !latestDetectedLandmarks;
       if (latestDetectedLandmarks) {
-        renderBonePreview(elements.canvas, normalizeLandmarksForObj(latestDetectedLandmarks));
+        renderBonePreview(elements.canvas, normalizeLandmarksForObj(adjustedLandmarks(latestDetectedLandmarks)));
         setStatus(`${targetHand() === "Right" ? "右手" : "左手"}を検出中`);
       }
       lastVideoTime = elements.video.currentTime;
@@ -232,7 +319,8 @@ function detectLoop() {
 }
 
 function buildCurrentObj(landmarks) {
-  const { mesh, normalizedLandmarks } = buildMeshFromRawLandmarks(landmarks, currentSettings);
+  const sourceLandmarks = adjustedLandmarks(landmarks);
+  const { mesh, normalizedLandmarks } = buildMeshFromRawLandmarks(sourceLandmarks, currentSettings);
   currentObj = meshToObj(mesh);
   renderBonePreview(elements.canvas, normalizedLandmarks);
   elements.download.disabled = false;
@@ -263,10 +351,11 @@ function downloadObj() {
 
 function applyPreset(name) {
   currentSettings = { ...(PRESETS[name] ?? PRESETS.standard) };
+  syncSlidersFromSettings();
   if (capturedLandmarks) {
     buildCurrentObj(capturedLandmarks);
   } else if (latestDetectedLandmarks) {
-    renderBonePreview(elements.canvas, normalizeLandmarksForObj(latestDetectedLandmarks));
+    renderBonePreview(elements.canvas, normalizeLandmarksForObj(adjustedLandmarks(latestDetectedLandmarks)));
   }
   saveSettings();
 }
@@ -275,6 +364,7 @@ function resetApp() {
   capturedLandmarks = null;
   currentObj = "";
   currentSettings = { ...PRESETS.standard };
+  syncSlidersFromSettings();
   elements.download.disabled = true;
   renderBonePreview(elements.canvas, normalizeLandmarksForObj(DEFAULT_LANDMARKS));
   setStatus("Ready");
@@ -284,10 +374,12 @@ function resetApp() {
 function initialize() {
   const settings = loadSettings();
   currentSettings = {
+    fingerLength: settings.fingerLength,
     fingerWidth: settings.fingerWidth,
     palmThickness: settings.palmThickness,
     jointRadius: settings.jointRadius,
   };
+  syncSlidersFromSettings();
   elements.handRight.checked = settings.targetHand !== "Left";
   elements.handLeft.checked = settings.targetHand === "Left";
   elements.facingMode.value = settings.facingMode;
@@ -306,6 +398,17 @@ function initialize() {
   });
   elements.handRight.addEventListener("change", saveSettings);
   elements.handLeft.addEventListener("change", saveSettings);
+  for (const slider of [elements.fingerLength, elements.fingerWidth, elements.jointRadius, elements.palmThickness]) {
+    slider.addEventListener("input", () => {
+      currentSettings = sliderSettings();
+      if (capturedLandmarks) {
+        buildCurrentObj(capturedLandmarks);
+      } else if (latestDetectedLandmarks) {
+        renderBonePreview(elements.canvas, normalizeLandmarksForObj(adjustedLandmarks(latestDetectedLandmarks)));
+      }
+      saveSettings();
+    });
+  }
   elements.presetButtons.forEach((button) => {
     button.addEventListener("click", () => applyPreset(button.dataset.preset));
   });

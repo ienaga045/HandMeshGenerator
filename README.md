@@ -10,6 +10,7 @@ Python版 Hand Base Mesh Generator のメッシュ生成処理を、GitHub Pages
 - 右手 / 左手の検出対象切り替え
 - MediaPipe Hand Landmarkerによる21点ランドマーク検出
 - カメラから取得した21点ランドマークからOBJを生成
+- 指の長さ、指の太さ、球の大きさ、甲の厚さをスライダー調整
 - OBJは `o hand_base_mesh`、`v`、`f` のみを出力
 
 Webcam modeはGitHub PagesなどHTTPS上で動作します。ブラウザの仕様上、カメラ権限はHTTPSまたはlocalhostでのみ許可されます。
@@ -35,6 +36,8 @@ Webcam modeはGitHub PagesなどHTTPS上で動作します。ブラウザの仕�
 - `build_hand_mesh`
 
 JavaScriptは数値型が64bit浮動小数の `Number` で固定です。Python版はNumPy `float32` を使う箇所があるため、座標の完全ビット一致は保証しません。OBJ出力はPython版と同じく小数6桁へ丸めます。
+
+指の長さスライダーはWeb版で追加した入力ランドマーク補正です。メッシュ生成本体はPython版と同じまま、各指のMCP/CMCを基準に先端側ランドマークを伸縮してからOBJ生成します。
 
 ## 実行
 

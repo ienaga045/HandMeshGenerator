@@ -52,6 +52,26 @@
           </div>
         </fieldset>
 
+        <fieldset class="adjust-box">
+          <legend>調整</legend>
+          <label class="slider-row">
+            <span>指の長さ</span>
+            <input id="finger-length" type="range" min="70" max="140" step="5">
+          </label>
+          <label class="slider-row">
+            <span>指の太さ</span>
+            <input id="finger-width" type="range" min="50" max="180" step="5">
+          </label>
+          <label class="slider-row">
+            <span>球の大きさ</span>
+            <input id="joint-radius" type="range" min="40" max="160" step="5">
+          </label>
+          <label class="slider-row">
+            <span>甲の厚さ</span>
+            <input id="palm-thickness" type="range" min="40" max="160" step="5">
+          </label>
+        </fieldset>
+
         <div class="action-row">
           <button id="start-camera" type="button" class="secondary-action">カメラ開始</button>
           <button id="stop-camera" type="button" class="secondary-action" disabled>停止</button>
@@ -68,6 +88,6 @@
       </section>
     </main>
 
-    <script type="module" src="main.js"></script>
+    <script type="module" src="main.js?v=20260620-camera-fallback"></script>
   </body>
 </html>
