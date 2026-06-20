@@ -30,7 +30,6 @@ const elements = {
   handLeft: document.querySelector("#hand-left"),
   startCamera: document.querySelector("#start-camera"),
   stopCamera: document.querySelector("#stop-camera"),
-  captureCamera: document.querySelector("#capture-camera"),
   download: document.querySelector("#download"),
   reset: document.querySelector("#reset"),
   status: document.querySelector("#status"),
@@ -46,7 +45,7 @@ let cameraStream = null;
 let animationId = 0;
 let lastVideoTime = -1;
 let latestDetectedLandmarks = null;
-let capturedLandmarks = null;
+let heldLandmarks = null;
 let currentObj = "";
 let currentSettings = { ...DEFAULT_SETTINGS };
 
@@ -235,7 +234,10 @@ async function startCamera() {
   }
 
   try {
-    stopCamera();
+    stopCamera(false);
+    heldLandmarks = null;
+    currentObj = "";
+    elements.download.disabled = true;
     setStatus("カメラ起動中...");
     cameraStream = await requestCameraStream();
     elements.video.srcObject = cameraStream;
@@ -245,17 +247,24 @@ async function startCamera() {
     await refreshCameraList();
     elements.startCamera.disabled = true;
     elements.stopCamera.disabled = false;
-    elements.captureCamera.disabled = true;
     await initializeHandLandmarker();
     setStatus("手をカメラに映してください");
     detectLoop();
   } catch (error) {
-    stopCamera();
+    stopCamera(false);
     setStatus(cameraErrorMessage(error));
   }
 }
 
-function stopCamera() {
+function stopCamera(freezePose = true) {
+  if (freezePose && latestDetectedLandmarks) {
+    heldLandmarks = latestDetectedLandmarks.map((point) => [...point]);
+    buildCurrentObj(heldLandmarks);
+    setStatus("停止しました。この手の形状でOBJを作成できます");
+  } else if (freezePose) {
+    setStatus("手が検出されていません");
+  }
+
   if (animationId) {
     cancelAnimationFrame(animationId);
     animationId = 0;
@@ -269,7 +278,6 @@ function stopCamera() {
   lastVideoTime = -1;
   elements.startCamera.disabled = false;
   elements.stopCamera.disabled = true;
-  elements.captureCamera.disabled = true;
 }
 
 function selectTargetHand(results) {
@@ -305,7 +313,6 @@ function detectLoop() {
     try {
       const results = handLandmarker.detectForVideo(elements.video, performance.now());
       latestDetectedLandmarks = selectTargetHand(results);
-      elements.captureCamera.disabled = !latestDetectedLandmarks;
       if (latestDetectedLandmarks) {
         renderBonePreview(elements.canvas, normalizeLandmarksForObj(adjustedLandmarks(latestDetectedLandmarks)));
         setStatus(`${targetHand() === "Right" ? "右手" : "左手"}を検出中`);
@@ -326,25 +333,12 @@ function buildCurrentObj(landmarks) {
   elements.download.disabled = false;
 }
 
-function capturePose() {
-  if (!latestDetectedLandmarks) {
-    setStatus("手が検出されていません");
+function downloadObj() {
+  if (!heldLandmarks) {
+    setStatus("先に停止して手の形状を固定してください");
     return;
   }
-  capturedLandmarks = latestDetectedLandmarks.map((point) => [...point]);
-  buildCurrentObj(capturedLandmarks);
-  setStatus("撮影しました");
-}
-
-function downloadObj() {
-  if (!capturedLandmarks) {
-    if (!latestDetectedLandmarks) {
-      setStatus("手が検出されていません");
-      return;
-    }
-    capturedLandmarks = latestDetectedLandmarks.map((point) => [...point]);
-    buildCurrentObj(capturedLandmarks);
-  }
+  buildCurrentObj(heldLandmarks);
   downloadText(`hand_base_mesh_${timestampForFilename()}.obj`, currentObj, "text/plain");
   setStatus("OBJを保存しました");
 }
@@ -352,8 +346,8 @@ function downloadObj() {
 function applyPreset(name) {
   currentSettings = { ...(PRESETS[name] ?? PRESETS.standard) };
   syncSlidersFromSettings();
-  if (capturedLandmarks) {
-    buildCurrentObj(capturedLandmarks);
+  if (heldLandmarks) {
+    buildCurrentObj(heldLandmarks);
   } else if (latestDetectedLandmarks) {
     renderBonePreview(elements.canvas, normalizeLandmarksForObj(adjustedLandmarks(latestDetectedLandmarks)));
   }
@@ -361,7 +355,7 @@ function applyPreset(name) {
 }
 
 function resetApp() {
-  capturedLandmarks = null;
+  heldLandmarks = null;
   currentObj = "";
   currentSettings = { ...PRESETS.standard };
   syncSlidersFromSettings();
@@ -385,8 +379,7 @@ function initialize() {
   elements.facingMode.value = settings.facingMode;
 
   elements.startCamera.addEventListener("click", startCamera);
-  elements.stopCamera.addEventListener("click", stopCamera);
-  elements.captureCamera.addEventListener("click", capturePose);
+  elements.stopCamera.addEventListener("click", () => stopCamera(true));
   elements.download.addEventListener("click", downloadObj);
   elements.reset.addEventListener("click", resetApp);
   elements.cameraSelect.addEventListener("change", () => {
@@ -401,8 +394,8 @@ function initialize() {
   for (const slider of [elements.fingerLength, elements.fingerWidth, elements.jointRadius, elements.palmThickness]) {
     slider.addEventListener("input", () => {
       currentSettings = sliderSettings();
-      if (capturedLandmarks) {
-        buildCurrentObj(capturedLandmarks);
+      if (heldLandmarks) {
+        buildCurrentObj(heldLandmarks);
       } else if (latestDetectedLandmarks) {
         renderBonePreview(elements.canvas, normalizeLandmarksForObj(adjustedLandmarks(latestDetectedLandmarks)));
       }

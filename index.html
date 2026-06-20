@@ -14,6 +14,10 @@
 
       <section class="card preview-card">
         <canvas id="bone-preview" width="560" height="420"></canvas>
+        <div class="preview-actions">
+          <button id="start-camera" type="button" class="secondary-action">カメラ開始</button>
+          <button id="stop-camera" type="button" class="secondary-action" disabled>停止</button>
+        </div>
       </section>
 
       <section class="card controls-card">
@@ -72,12 +76,6 @@
           </label>
         </fieldset>
 
-        <div class="action-row">
-          <button id="start-camera" type="button" class="secondary-action">カメラ開始</button>
-          <button id="stop-camera" type="button" class="secondary-action" disabled>停止</button>
-          <button id="capture-camera" type="button" class="secondary-action" disabled>撮影</button>
-        </div>
-
         <div class="action-row final-actions">
           <button id="download" type="button" class="primary-action" disabled>OBJ作成・保存</button>
           <button id="reset" type="button" class="reset-action">リセット</button>
@@ -88,6 +86,6 @@
       </section>
     </main>
 
-    <script type="module" src="main.js?v=20260620-camera-fallback"></script>
+    <script type="module" src="main.js?v=20260621-stop-freeze"></script>
   </body>
 </html>
