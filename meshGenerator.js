@@ -131,9 +131,12 @@ export function normalizeLandmarksForObj(landmarks) {
   const coords = cloneLandmarks(landmarks);
   for (const point of coords) {
     point[1] *= -1;
-    point[0] -= coords[0][0];
-    point[1] -= coords[0][1];
-    point[2] -= coords[0][2];
+  }
+  const origin = [...coords[0]];
+  for (const point of coords) {
+    point[0] -= origin[0];
+    point[1] -= origin[1];
+    point[2] -= origin[2];
   }
 
   const scaleSegments = [

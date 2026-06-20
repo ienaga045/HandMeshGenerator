@@ -7,14 +7,18 @@ import {
   buildMeshFromRawLandmarks,
   expectedDefaultCounts,
   generateUvSphere,
+  normalizeLandmarksForObj,
 } from "../meshGenerator.js";
 import { meshToObj } from "../objExporter.js";
 
 const { mesh } = buildMeshFromRawLandmarks(DEFAULT_LANDMARKS, DEFAULT_SETTINGS);
 const expected = expectedDefaultCounts();
+const normalized = normalizeLandmarksForObj(DEFAULT_LANDMARKS);
 
 assert.equal(BONE_CONNECTIONS.length, 24, "Python version uses 24 bone prism connections");
 assert.equal(LANDMARK_NAMES.length, 21, "Python version uses 21 MediaPipe landmarks");
+assert.deepEqual(normalized[0], [0, 0, 0], "wrist must be normalized to the OBJ origin");
+assert.ok(normalized[5][1] > 0, "index_mcp should be above wrist after Python-compatible y inversion");
 assert.equal(mesh.vertices.length, expected.vertices, "default vertex count must match Python topology");
 assert.equal(mesh.faces.length, expected.faces, "default face count must match Python topology");
 assert.equal(expected.vertices, 1212, "default topology vertex count");
