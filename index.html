@@ -8,13 +8,9 @@
   </head>
   <body>
     <main class="app-shell">
-      <section class="card camera-card">
-        <div class="video-wrap">
-          <video id="camera-video" playsinline muted autoplay></video>
-          <canvas id="camera-overlay"></canvas>
-        </div>
-        <p class="privacy-note">Camera images are processed only in this browser and are not saved on a server.</p>
-      </section>
+      <div class="capture-source" aria-hidden="true">
+        <video id="camera-video" playsinline muted autoplay></video>
+      </div>
 
       <section class="card preview-card">
         <canvas id="bone-preview" width="560" height="420"></canvas>
@@ -68,6 +64,7 @@
         </div>
 
         <p id="status" class="status">Ready</p>
+        <p class="privacy-note">Camera images are processed only in this browser and are not saved on a server.</p>
       </section>
     </main>
 

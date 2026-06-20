@@ -1,5 +1,4 @@
 import {
-  BONE_CONNECTIONS,
   DEFAULT_LANDMARKS,
   DEFAULT_SETTINGS,
   buildMeshFromRawLandmarks,
@@ -24,7 +23,6 @@ const PRESETS = {
 
 const elements = {
   video: document.querySelector("#camera-video"),
-  overlay: document.querySelector("#camera-overlay"),
   canvas: document.querySelector("#bone-preview"),
   cameraSelect: document.querySelector("#camera-select"),
   facingMode: document.querySelector("#facing-mode"),
@@ -175,7 +173,6 @@ function stopCamera() {
   elements.startCamera.disabled = false;
   elements.stopCamera.disabled = true;
   elements.captureCamera.disabled = true;
-  clearOverlay();
 }
 
 function selectTargetHand(results) {
@@ -210,7 +207,6 @@ function detectLoop() {
   if (elements.video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && elements.video.currentTime !== lastVideoTime) {
     const results = handLandmarker.detectForVideo(elements.video, performance.now());
     latestDetectedLandmarks = selectTargetHand(results);
-    drawCameraOverlay(latestDetectedLandmarks);
     elements.captureCamera.disabled = !latestDetectedLandmarks;
     if (latestDetectedLandmarks) {
       renderBonePreview(elements.canvas, normalizeLandmarksForObj(latestDetectedLandmarks));
@@ -219,41 +215,6 @@ function detectLoop() {
     lastVideoTime = elements.video.currentTime;
   }
   animationId = requestAnimationFrame(detectLoop);
-}
-
-function clearOverlay() {
-  const ctx = elements.overlay.getContext("2d");
-  ctx.clearRect(0, 0, elements.overlay.width, elements.overlay.height);
-}
-
-function drawCameraOverlay(landmarks) {
-  const videoWidth = elements.video.videoWidth || 640;
-  const videoHeight = elements.video.videoHeight || 480;
-  if (elements.overlay.width !== videoWidth || elements.overlay.height !== videoHeight) {
-    elements.overlay.width = videoWidth;
-    elements.overlay.height = videoHeight;
-  }
-
-  const ctx = elements.overlay.getContext("2d");
-  ctx.clearRect(0, 0, videoWidth, videoHeight);
-  if (!landmarks) return;
-
-  const points = landmarks.map((point) => [(1 - point[0]) * videoWidth, point[1] * videoHeight]);
-  ctx.lineCap = "round";
-  ctx.lineWidth = 4;
-  ctx.strokeStyle = "#ffd400";
-  for (const [a, b] of BONE_CONNECTIONS) {
-    ctx.beginPath();
-    ctx.moveTo(points[a][0], points[a][1]);
-    ctx.lineTo(points[b][0], points[b][1]);
-    ctx.stroke();
-  }
-  points.forEach((point, index) => {
-    ctx.fillStyle = index === 0 ? "#357aa2" : "#0f8f86";
-    ctx.beginPath();
-    ctx.arc(point[0], point[1], index === 0 ? 6 : 4.5, 0, Math.PI * 2);
-    ctx.fill();
-  });
 }
 
 function buildCurrentObj(landmarks) {
