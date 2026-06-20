@@ -304,7 +304,26 @@ function selectTargetHand(results) {
   });
 
   if (bestIndex < 0) return null;
-  return landmarksList[bestIndex].map((point) => [point.x, point.y, point.z]);
+  return aspectCorrectLandmarks(landmarksList[bestIndex]);
+}
+
+function currentVideoAspect() {
+  const width = Number(elements.video.videoWidth || 0);
+  const height = Number(elements.video.videoHeight || 0);
+  if (width <= 0 || height <= 0) return 1;
+  return width / height;
+}
+
+function aspectCorrectLandmarks(landmarks) {
+  const aspect = currentVideoAspect();
+  // MediaPipe x is normalized by image width while y is normalized by image height.
+  // Convert x and z into image-height units so portrait iPhone cameras do not
+  // stretch the generated hand mesh sideways.
+  return landmarks.map((point) => [
+    point.x * aspect,
+    point.y,
+    point.z * aspect,
+  ]);
 }
 
 function detectLoop() {
