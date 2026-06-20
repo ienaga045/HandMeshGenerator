@@ -18,6 +18,49 @@
 
       <section class="workspace">
         <section class="panel controls">
+          <h2>Input Mode</h2>
+          <div class="mode-row">
+            <label><input id="mode-manual" type="radio" name="input-mode" value="manual" checked> Manual</label>
+            <label><input id="mode-webcam" type="radio" name="input-mode" value="webcam"> Webcam Capture</label>
+          </div>
+
+          <section id="camera-panel" class="camera-panel" hidden>
+            <h2>Camera</h2>
+            <div class="camera-controls">
+              <label>
+                Camera
+                <select id="camera-select">
+                  <option value="">Default / In Camera</option>
+                </select>
+              </label>
+              <label>
+                Facing
+                <select id="facing-mode">
+                  <option value="user">In camera</option>
+                  <option value="environment">Rear camera</option>
+                </select>
+              </label>
+              <label>
+                Hand
+                <select id="target-hand">
+                  <option value="Any">Any</option>
+                  <option value="Left">Left</option>
+                  <option value="Right">Right</option>
+                </select>
+              </label>
+            </div>
+            <div class="button-row">
+              <button id="start-camera" type="button">Start Camera</button>
+              <button id="stop-camera" type="button" disabled>Stop</button>
+              <button id="capture-camera" type="button" disabled>Capture Pose</button>
+            </div>
+            <div class="video-wrap">
+              <video id="camera-video" playsinline muted autoplay></video>
+              <canvas id="camera-overlay"></canvas>
+            </div>
+            <p class="privacy-note">Camera images are processed only in this browser and are not saved on a server.</p>
+          </section>
+
           <h2>Mesh Parameters</h2>
           <label class="slider-row">
             <span>指の太さ</span>
@@ -41,7 +84,7 @@
           </div>
 
           <h2>Manual Landmarks</h2>
-          <p class="note">21点のMediaPipe形式 [x, y, z] を入力します。Webカメラ/MediaPipeは今回未実装です。</p>
+          <p class="note">21点のMediaPipe形式 [x, y, z] を入力します。Webcam Captureでは撮影時にここへ反映されます。</p>
           <textarea id="landmarks-json" spellcheck="false"></textarea>
         </section>
 

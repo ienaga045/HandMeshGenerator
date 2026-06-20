@@ -118,10 +118,75 @@ h2 {
   text-align: right;
 }
 
+.mode-row,
+.camera-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.mode-row label,
+.camera-controls label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.camera-controls select {
+  min-width: 120px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--text);
+  padding: 6px;
+}
+
+.camera-panel {
+  margin-bottom: 18px;
+}
+
 .button-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin: 14px 0 18px;
+}
+
+.video-wrap {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #05070a;
+}
+
+.video-wrap video,
+.video-wrap canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.video-wrap video {
+  transform: scaleX(-1);
+}
+
+.video-wrap canvas {
+  pointer-events: none;
+}
+
+.privacy-note {
+  margin-top: 6px;
+  color: #8d96a8;
+  font-size: 11px;
+  line-height: 1.4;
 }
 
 textarea {
