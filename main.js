@@ -9,7 +9,7 @@ import { renderBonePreview } from "./previewRenderer.js";
 
 const STORAGE_KEY = "hand-base-mesh-webcam-settings-v2";
 const MEDIAPIPE_WASM_URL = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm";
-const MEDIAPIPE_BUNDLE_URL = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/vision_bundle.mjs";
+const MEDIAPIPE_BUNDLE_URL = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.mjs";
 const HAND_MODEL_URL = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
 
 const PRESETS = {
@@ -77,12 +77,21 @@ function setStatus(message) {
   elements.status.textContent = message;
 }
 
+function withTimeout(promise, milliseconds, label) {
+  let timeoutId = 0;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = window.setTimeout(() => reject(new Error(`${label} timed out`)), milliseconds);
+  });
+  return Promise.race([promise, timeout]).finally(() => window.clearTimeout(timeoutId));
+}
+
 async function initializeHandLandmarker() {
   if (handLandmarker) return handLandmarker;
-  setStatus("Loading MediaPipe...");
-  const { FilesetResolver, HandLandmarker } = await import(MEDIAPIPE_BUNDLE_URL);
-  const vision = await FilesetResolver.forVisionTasks(MEDIAPIPE_WASM_URL);
-  handLandmarker = await HandLandmarker.createFromOptions(vision, {
+  setStatus("MediaPipeライブラリを読み込み中...");
+  const { FilesetResolver, HandLandmarker } = await withTimeout(import(MEDIAPIPE_BUNDLE_URL), 45000, "MediaPipe library load");
+  setStatus("MediaPipeモデルを読み込み中...");
+  const vision = await withTimeout(FilesetResolver.forVisionTasks(MEDIAPIPE_WASM_URL), 45000, "MediaPipe wasm load");
+  handLandmarker = await withTimeout(HandLandmarker.createFromOptions(vision, {
     baseOptions: {
       modelAssetPath: HAND_MODEL_URL,
     },
@@ -91,7 +100,7 @@ async function initializeHandLandmarker() {
     minHandDetectionConfidence: 0.6,
     minHandPresenceConfidence: 0.5,
     minTrackingConfidence: 0.5,
-  });
+  }), 45000, "Hand model load");
   return handLandmarker;
 }
 
@@ -141,8 +150,8 @@ async function startCamera() {
   }
 
   try {
-    await initializeHandLandmarker();
     stopCamera();
+    setStatus("カメラ起動中...");
     cameraStream = await navigator.mediaDevices.getUserMedia(cameraConstraints());
     elements.video.srcObject = cameraStream;
     await elements.video.play();
@@ -150,6 +159,7 @@ async function startCamera() {
     elements.startCamera.disabled = true;
     elements.stopCamera.disabled = false;
     elements.captureCamera.disabled = true;
+    await initializeHandLandmarker();
     setStatus("手をカメラに映してください");
     detectLoop();
   } catch (error) {
@@ -205,14 +215,18 @@ function selectTargetHand(results) {
 function detectLoop() {
   if (!cameraStream || !handLandmarker) return;
   if (elements.video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && elements.video.currentTime !== lastVideoTime) {
-    const results = handLandmarker.detectForVideo(elements.video, performance.now());
-    latestDetectedLandmarks = selectTargetHand(results);
-    elements.captureCamera.disabled = !latestDetectedLandmarks;
-    if (latestDetectedLandmarks) {
-      renderBonePreview(elements.canvas, normalizeLandmarksForObj(latestDetectedLandmarks));
-      setStatus(`${targetHand() === "Right" ? "右手" : "左手"}を検出中`);
+    try {
+      const results = handLandmarker.detectForVideo(elements.video, performance.now());
+      latestDetectedLandmarks = selectTargetHand(results);
+      elements.captureCamera.disabled = !latestDetectedLandmarks;
+      if (latestDetectedLandmarks) {
+        renderBonePreview(elements.canvas, normalizeLandmarksForObj(latestDetectedLandmarks));
+        setStatus(`${targetHand() === "Right" ? "右手" : "左手"}を検出中`);
+      }
+      lastVideoTime = elements.video.currentTime;
+    } catch (error) {
+      setStatus(`Detection error: ${error.message}`);
     }
-    lastVideoTime = elements.video.currentTime;
   }
   animationId = requestAnimationFrame(detectLoop);
 }
