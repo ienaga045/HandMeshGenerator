@@ -3,52 +3,50 @@ import {
   DEFAULT_LANDMARKS,
   DEFAULT_SETTINGS,
   buildMeshFromRawLandmarks,
-  expectedDefaultCounts,
+  normalizeLandmarksForObj,
 } from "./meshGenerator.js";
 import { downloadText, meshToObj, timestampForFilename } from "./objExporter.js";
 import { renderBonePreview } from "./previewRenderer.js";
 
-const STORAGE_KEY = "hand-base-mesh-js-settings-v1";
+const STORAGE_KEY = "hand-base-mesh-webcam-settings-v2";
 const MEDIAPIPE_WASM_URL = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm";
 const MEDIAPIPE_BUNDLE_URL = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/vision_bundle.mjs";
 const HAND_MODEL_URL = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
 
+const PRESETS = {
+  standard: { fingerWidth: 80, palmThickness: 100, jointRadius: 100 },
+  wide: { fingerWidth: 105, palmThickness: 105, jointRadius: 100 },
+  thickPalm: { fingerWidth: 80, palmThickness: 130, jointRadius: 100 },
+  slim: { fingerWidth: 65, palmThickness: 85, jointRadius: 90 },
+  longFinger: { fingerWidth: 75, palmThickness: 95, jointRadius: 95 },
+  smallJoint: { fingerWidth: 80, palmThickness: 100, jointRadius: 75 },
+};
+
 const elements = {
-  modeManual: document.querySelector("#mode-manual"),
-  modeWebcam: document.querySelector("#mode-webcam"),
-  cameraPanel: document.querySelector("#camera-panel"),
+  video: document.querySelector("#camera-video"),
+  overlay: document.querySelector("#camera-overlay"),
+  canvas: document.querySelector("#bone-preview"),
   cameraSelect: document.querySelector("#camera-select"),
   facingMode: document.querySelector("#facing-mode"),
-  targetHand: document.querySelector("#target-hand"),
+  handRight: document.querySelector("#hand-right"),
+  handLeft: document.querySelector("#hand-left"),
   startCamera: document.querySelector("#start-camera"),
   stopCamera: document.querySelector("#stop-camera"),
   captureCamera: document.querySelector("#capture-camera"),
-  video: document.querySelector("#camera-video"),
-  overlay: document.querySelector("#camera-overlay"),
-  fingerWidth: document.querySelector("#finger-width"),
-  palmThickness: document.querySelector("#palm-thickness"),
-  jointRadius: document.querySelector("#joint-radius"),
-  fingerWidthValue: document.querySelector("#finger-width-value"),
-  palmThicknessValue: document.querySelector("#palm-thickness-value"),
-  jointRadiusValue: document.querySelector("#joint-radius-value"),
-  landmarks: document.querySelector("#landmarks-json"),
-  resetLandmarks: document.querySelector("#reset-landmarks"),
-  generate: document.querySelector("#generate"),
   download: document.querySelector("#download"),
-  objOutput: document.querySelector("#obj-output"),
+  reset: document.querySelector("#reset"),
   status: document.querySelector("#status"),
-  stats: document.querySelector("#stats"),
-  canvas: document.querySelector("#bone-preview"),
+  presetButtons: [...document.querySelectorAll(".preset-button")],
 };
 
-let currentObj = "";
-let currentMesh = null;
 let handLandmarker = null;
 let cameraStream = null;
 let animationId = 0;
 let lastVideoTime = -1;
 let latestDetectedLandmarks = null;
-let inputMode = "manual";
+let capturedLandmarks = null;
+let currentObj = "";
+let currentSettings = { ...DEFAULT_SETTINGS };
 
 function loadSettings() {
   try {
@@ -57,104 +55,33 @@ function loadSettings() {
       fingerWidth: Number(saved.fingerWidth ?? DEFAULT_SETTINGS.fingerWidth),
       palmThickness: Number(saved.palmThickness ?? DEFAULT_SETTINGS.palmThickness),
       jointRadius: Number(saved.jointRadius ?? DEFAULT_SETTINGS.jointRadius),
-      landmarks: saved.landmarks ?? DEFAULT_LANDMARKS,
-      inputMode: saved.inputMode ?? "manual",
-      targetHand: saved.targetHand ?? "Any",
+      targetHand: saved.targetHand === "Left" ? "Left" : "Right",
       facingMode: saved.facingMode ?? "user",
     };
   } catch {
-    return { ...DEFAULT_SETTINGS, landmarks: DEFAULT_LANDMARKS, inputMode: "manual", targetHand: "Any", facingMode: "user" };
+    return { ...DEFAULT_SETTINGS, targetHand: "Right", facingMode: "user" };
   }
 }
 
-function saveSettings(settings) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+function saveSettings() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({
+    ...currentSettings,
+    targetHand: targetHand(),
+    facingMode: elements.facingMode.value,
+  }));
 }
 
-function sliderSettings() {
-  return {
-    fingerWidth: Number(elements.fingerWidth.value),
-    palmThickness: Number(elements.palmThickness.value),
-    jointRadius: Number(elements.jointRadius.value),
-  };
+function targetHand() {
+  return elements.handLeft.checked ? "Left" : "Right";
 }
 
-function safeCurrentLandmarks() {
-  try {
-    return parseLandmarks();
-  } catch {
-    return DEFAULT_LANDMARKS;
-  }
-}
-
-function updateSliderLabels() {
-  elements.fingerWidthValue.textContent = elements.fingerWidth.value;
-  elements.palmThicknessValue.textContent = elements.palmThickness.value;
-  elements.jointRadiusValue.textContent = elements.jointRadius.value;
-}
-
-function parseLandmarks() {
-  const parsed = JSON.parse(elements.landmarks.value);
-  if (!Array.isArray(parsed) || parsed.length !== 21) {
-    throw new Error("landmarks must be an array of 21 [x, y, z] points");
-  }
-  return parsed.map((point, index) => {
-    if (!Array.isArray(point) || point.length !== 3) {
-      throw new Error(`landmark ${index} must be [x, y, z]`);
-    }
-    return point.map((value) => {
-      const number = Number(value);
-      if (!Number.isFinite(number)) throw new Error(`landmark ${index} has a non-numeric value`);
-      return number;
-    });
-  });
-}
-
-function renderStats(mesh) {
-  const expected = expectedDefaultCounts();
-  const vertexOk = mesh.vertices.length === expected.vertices;
-  const faceOk = mesh.faces.length === expected.faces;
-  elements.stats.innerHTML = `
-    <span>vertices: <strong>${mesh.vertices.length}</strong> / expected ${expected.vertices}</span>
-    <span>faces: <strong>${mesh.faces.length}</strong> / expected ${expected.faces}</span>
-    <span class="${vertexOk && faceOk ? "ok" : "warn"}">${vertexOk && faceOk ? "Python topology match" : "Topology mismatch"}</span>
-  `;
-}
-
-function generate(statusMessage = "OBJ generated from manual landmarks.") {
-  try {
-    updateSliderLabels();
-    const landmarks = parseLandmarks();
-    const settings = sliderSettings();
-    const { mesh, normalizedLandmarks } = buildMeshFromRawLandmarks(landmarks, settings);
-    currentMesh = mesh;
-    currentObj = meshToObj(mesh);
-    elements.objOutput.value = currentObj;
-    renderBonePreview(elements.canvas, normalizedLandmarks);
-    renderStats(mesh);
-    saveSettings({
-      ...settings,
-      landmarks,
-      inputMode,
-      targetHand: elements.targetHand.value,
-      facingMode: elements.facingMode.value,
-    });
-    elements.status.textContent = statusMessage;
-    elements.download.disabled = false;
-  } catch (error) {
-    elements.status.textContent = `Error: ${error.message}`;
-    elements.download.disabled = true;
-  }
-}
-
-function downloadObj() {
-  if (!currentObj || !currentMesh) return;
-  downloadText(`hand_base_mesh_${timestampForFilename()}.obj`, currentObj, "text/plain");
+function setStatus(message) {
+  elements.status.textContent = message;
 }
 
 async function initializeHandLandmarker() {
   if (handLandmarker) return handLandmarker;
-  elements.status.textContent = "Loading MediaPipe Hand Landmarker...";
+  setStatus("Loading MediaPipe...");
   const { FilesetResolver, HandLandmarker } = await import(MEDIAPIPE_BUNDLE_URL);
   const vision = await FilesetResolver.forVisionTasks(MEDIAPIPE_WASM_URL);
   handLandmarker = await HandLandmarker.createFromOptions(vision, {
@@ -187,24 +114,6 @@ async function refreshCameraList() {
   }
 }
 
-function stopCamera() {
-  if (animationId) {
-    cancelAnimationFrame(animationId);
-    animationId = 0;
-  }
-  if (cameraStream) {
-    for (const track of cameraStream.getTracks()) track.stop();
-    cameraStream = null;
-  }
-  elements.video.srcObject = null;
-  latestDetectedLandmarks = null;
-  lastVideoTime = -1;
-  elements.startCamera.disabled = false;
-  elements.stopCamera.disabled = true;
-  elements.captureCamera.disabled = true;
-  clearOverlay();
-}
-
 function cameraConstraints() {
   const selectedDeviceId = elements.cameraSelect.value;
   if (selectedDeviceId) {
@@ -229,9 +138,10 @@ function cameraConstraints() {
 
 async function startCamera() {
   if (!navigator.mediaDevices?.getUserMedia) {
-    elements.status.textContent = "このブラウザはカメラ入力に対応していません。";
+    setStatus("このブラウザはカメラ入力に対応していません");
     return;
   }
+
   try {
     await initializeHandLandmarker();
     stopCamera();
@@ -242,27 +152,45 @@ async function startCamera() {
     elements.startCamera.disabled = true;
     elements.stopCamera.disabled = false;
     elements.captureCamera.disabled = true;
-    elements.status.textContent = "Camera running. 手をカメラに映してください。";
+    setStatus("手をカメラに映してください");
     detectLoop();
   } catch (error) {
     stopCamera();
-    elements.status.textContent = `Camera error: ${error.message}`;
+    setStatus(`Camera error: ${error.message}`);
   }
+}
+
+function stopCamera() {
+  if (animationId) {
+    cancelAnimationFrame(animationId);
+    animationId = 0;
+  }
+  if (cameraStream) {
+    for (const track of cameraStream.getTracks()) track.stop();
+    cameraStream = null;
+  }
+  elements.video.srcObject = null;
+  latestDetectedLandmarks = null;
+  lastVideoTime = -1;
+  elements.startCamera.disabled = false;
+  elements.stopCamera.disabled = true;
+  elements.captureCamera.disabled = true;
+  clearOverlay();
 }
 
 function selectTargetHand(results) {
   const landmarksList = results.landmarks ?? [];
   if (landmarksList.length === 0) return null;
   const handednessList = results.handednesses ?? results.handedness ?? [];
-  const target = elements.targetHand.value;
-  let bestIndex = 0;
+  const wanted = targetHand();
+  let bestIndex = -1;
   let bestScore = -Infinity;
   const imageCenter = [0.5, 0.5];
 
   landmarksList.forEach((landmarks, index) => {
     const handedness = handednessList[index]?.[0];
     const label = handedness?.categoryName ?? handedness?.displayName ?? "";
-    if (target !== "Any" && label !== target) return;
+    if (label && label !== wanted) return;
     const confidence = Number(handedness?.score ?? 0);
     const center = landmarks.reduce((acc, point) => [acc[0] + point.x, acc[1] + point.y], [0, 0]).map((value) => value / landmarks.length);
     const distance = Math.hypot(center[0] - imageCenter[0], center[1] - imageCenter[1]);
@@ -273,7 +201,7 @@ function selectTargetHand(results) {
     }
   });
 
-  if (bestScore === -Infinity) return null;
+  if (bestIndex < 0) return null;
   return landmarksList[bestIndex].map((point) => [point.x, point.y, point.z]);
 }
 
@@ -284,6 +212,10 @@ function detectLoop() {
     latestDetectedLandmarks = selectTargetHand(results);
     drawCameraOverlay(latestDetectedLandmarks);
     elements.captureCamera.disabled = !latestDetectedLandmarks;
+    if (latestDetectedLandmarks) {
+      renderBonePreview(elements.canvas, normalizeLandmarksForObj(latestDetectedLandmarks));
+      setStatus(`${targetHand() === "Right" ? "右手" : "左手"}を検出中`);
+    }
     lastVideoTime = elements.video.currentTime;
   }
   animationId = requestAnimationFrame(detectLoop);
@@ -317,85 +249,95 @@ function drawCameraOverlay(landmarks) {
     ctx.stroke();
   }
   points.forEach((point, index) => {
-    ctx.fillStyle = index === 0 ? "#ffd45a" : "#4cff63";
+    ctx.fillStyle = index === 0 ? "#357aa2" : "#0f8f86";
     ctx.beginPath();
-    ctx.arc(point[0], point[1], index === 0 ? 6 : 5, 0, Math.PI * 2);
+    ctx.arc(point[0], point[1], index === 0 ? 6 : 4.5, 0, Math.PI * 2);
     ctx.fill();
   });
 }
 
-function captureCameraPose() {
-  if (!latestDetectedLandmarks) {
-    elements.status.textContent = "手が検出されていません。";
-    return;
-  }
-  elements.landmarks.value = JSON.stringify(latestDetectedLandmarks, null, 2);
-  generate("OBJ generated from webcam capture.");
+function buildCurrentObj(landmarks) {
+  const { mesh, normalizedLandmarks } = buildMeshFromRawLandmarks(landmarks, currentSettings);
+  currentObj = meshToObj(mesh);
+  renderBonePreview(elements.canvas, normalizedLandmarks);
+  elements.download.disabled = false;
 }
 
-function setInputMode(nextMode) {
-  inputMode = nextMode;
-  elements.cameraPanel.hidden = inputMode !== "webcam";
-  if (inputMode !== "webcam") {
-    stopCamera();
-    generate();
-  } else {
-    saveSettings({
-      ...sliderSettings(),
-      landmarks: safeCurrentLandmarks(),
-      inputMode,
-      targetHand: elements.targetHand.value,
-      facingMode: elements.facingMode.value,
-    });
-    elements.status.textContent = "Webcam Captureを開始するには Start Camera を押してください。";
+function capturePose() {
+  if (!latestDetectedLandmarks) {
+    setStatus("手が検出されていません");
+    return;
   }
+  capturedLandmarks = latestDetectedLandmarks.map((point) => [...point]);
+  buildCurrentObj(capturedLandmarks);
+  setStatus("撮影しました");
+}
+
+function downloadObj() {
+  if (!capturedLandmarks) {
+    if (!latestDetectedLandmarks) {
+      setStatus("手が検出されていません");
+      return;
+    }
+    capturedLandmarks = latestDetectedLandmarks.map((point) => [...point]);
+    buildCurrentObj(capturedLandmarks);
+  }
+  downloadText(`hand_base_mesh_${timestampForFilename()}.obj`, currentObj, "text/plain");
+  setStatus("OBJを保存しました");
+}
+
+function applyPreset(name) {
+  currentSettings = { ...(PRESETS[name] ?? PRESETS.standard) };
+  if (capturedLandmarks) {
+    buildCurrentObj(capturedLandmarks);
+  } else if (latestDetectedLandmarks) {
+    renderBonePreview(elements.canvas, normalizeLandmarksForObj(latestDetectedLandmarks));
+  }
+  saveSettings();
+}
+
+function resetApp() {
+  capturedLandmarks = null;
+  currentObj = "";
+  currentSettings = { ...PRESETS.standard };
+  elements.download.disabled = true;
+  renderBonePreview(elements.canvas, normalizeLandmarksForObj(DEFAULT_LANDMARKS));
+  setStatus("Ready");
+  saveSettings();
 }
 
 function initialize() {
   const settings = loadSettings();
-  inputMode = settings.inputMode;
-  elements.modeManual.checked = inputMode === "manual";
-  elements.modeWebcam.checked = inputMode === "webcam";
-  elements.cameraPanel.hidden = inputMode !== "webcam";
-  elements.targetHand.value = settings.targetHand;
+  currentSettings = {
+    fingerWidth: settings.fingerWidth,
+    palmThickness: settings.palmThickness,
+    jointRadius: settings.jointRadius,
+  };
+  elements.handRight.checked = settings.targetHand !== "Left";
+  elements.handLeft.checked = settings.targetHand === "Left";
   elements.facingMode.value = settings.facingMode;
-  elements.fingerWidth.value = settings.fingerWidth;
-  elements.palmThickness.value = settings.palmThickness;
-  elements.jointRadius.value = settings.jointRadius;
-  elements.landmarks.value = JSON.stringify(settings.landmarks, null, 2);
-  updateSliderLabels();
 
-  for (const input of [elements.fingerWidth, elements.palmThickness, elements.jointRadius]) {
-    input.addEventListener("input", generate);
-  }
-  elements.landmarks.addEventListener("change", generate);
-  elements.generate.addEventListener("click", generate);
-  elements.download.addEventListener("click", downloadObj);
-  elements.modeManual.addEventListener("change", () => setInputMode("manual"));
-  elements.modeWebcam.addEventListener("change", () => setInputMode("webcam"));
   elements.startCamera.addEventListener("click", startCamera);
   elements.stopCamera.addEventListener("click", stopCamera);
-  elements.captureCamera.addEventListener("click", captureCameraPose);
+  elements.captureCamera.addEventListener("click", capturePose);
+  elements.download.addEventListener("click", downloadObj);
+  elements.reset.addEventListener("click", resetApp);
   elements.cameraSelect.addEventListener("change", () => {
     if (cameraStream) startCamera();
   });
   elements.facingMode.addEventListener("change", () => {
+    saveSettings();
     if (cameraStream) startCamera();
   });
-  elements.targetHand.addEventListener("change", () => saveSettings({
-    ...sliderSettings(),
-    landmarks: safeCurrentLandmarks(),
-    inputMode,
-    targetHand: elements.targetHand.value,
-    facingMode: elements.facingMode.value,
-  }));
-  elements.resetLandmarks.addEventListener("click", () => {
-    elements.landmarks.value = JSON.stringify(DEFAULT_LANDMARKS, null, 2);
-    generate();
+  elements.handRight.addEventListener("change", saveSettings);
+  elements.handLeft.addEventListener("change", saveSettings);
+  elements.presetButtons.forEach((button) => {
+    button.addEventListener("click", () => applyPreset(button.dataset.preset));
   });
 
   refreshCameraList().catch(() => {});
-  generate();
+  renderBonePreview(elements.canvas, normalizeLandmarksForObj(DEFAULT_LANDMARKS));
+  setStatus("Ready");
 }
 
 initialize();

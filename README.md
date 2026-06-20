@@ -4,15 +4,15 @@ Python版 Hand Base Mesh Generator のメッシュ生成処理を、GitHub Pages
 
 ## 現在の範囲
 
-- Manual mode
-- Webcam Capture mode
+- Webcam mode only
 - PCのWebカム
 - スマホのインカメ / リアカメ切り替え
+- 右手 / 左手の検出対象切り替え
 - MediaPipe Hand Landmarkerによる21点ランドマーク検出
-- 21点ランドマークJSONとスライダー値からOBJを生成
+- カメラから取得した21点ランドマークからOBJを生成
 - OBJは `o hand_base_mesh`、`v`、`f` のみを出力
 
-Webcam Capture modeはGitHub PagesなどHTTPS上で動作します。ブラウザの仕様上、カメラ権限はHTTPSまたはlocalhostでのみ許可されます。
+Webcam modeはGitHub PagesなどHTTPS上で動作します。ブラウザの仕様上、カメラ権限はHTTPSまたはlocalhostでのみ許可されます。
 カメラ画像はブラウザ内で処理され、サーバー側には保存されません。
 
 ## Python版から維持しているメッシュ構成
@@ -68,8 +68,8 @@ npm test
 
 ## 将来予定
 
-- 21点ランドマークからManual modeパラメータへの変換
-- 右手/左手切り替え
+- OBJプレビューの改善
+- プリセット追加
 
 ## License
 

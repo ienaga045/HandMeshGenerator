@@ -3,102 +3,71 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Hand Base Mesh Generator JS</title>
+    <title>Hand Base Mesh Generator</title>
     <link rel="stylesheet" href="style.css">
   </head>
   <body>
     <main class="app-shell">
-      <header class="topbar">
-        <div>
-          <h1>Hand Base Mesh Generator JS</h1>
-          <p>Manual mode / OBJ topology ported from the Python PoC</p>
+      <section class="card camera-card">
+        <div class="video-wrap">
+          <video id="camera-video" playsinline muted autoplay></video>
+          <canvas id="camera-overlay"></canvas>
         </div>
-        <button id="download" type="button" disabled>Download OBJ</button>
-      </header>
-
-      <section class="workspace">
-        <section class="panel controls">
-          <h2>Input Mode</h2>
-          <div class="mode-row">
-            <label><input id="mode-manual" type="radio" name="input-mode" value="manual" checked> Manual</label>
-            <label><input id="mode-webcam" type="radio" name="input-mode" value="webcam"> Webcam Capture</label>
-          </div>
-
-          <section id="camera-panel" class="camera-panel" hidden>
-            <h2>Camera</h2>
-            <div class="camera-controls">
-              <label>
-                Camera
-                <select id="camera-select">
-                  <option value="">Default / In Camera</option>
-                </select>
-              </label>
-              <label>
-                Facing
-                <select id="facing-mode">
-                  <option value="user">In camera</option>
-                  <option value="environment">Rear camera</option>
-                </select>
-              </label>
-              <label>
-                Hand
-                <select id="target-hand">
-                  <option value="Any">Any</option>
-                  <option value="Left">Left</option>
-                  <option value="Right">Right</option>
-                </select>
-              </label>
-            </div>
-            <div class="button-row">
-              <button id="start-camera" type="button">Start Camera</button>
-              <button id="stop-camera" type="button" disabled>Stop</button>
-              <button id="capture-camera" type="button" disabled>Capture Pose</button>
-            </div>
-            <div class="video-wrap">
-              <video id="camera-video" playsinline muted autoplay></video>
-              <canvas id="camera-overlay"></canvas>
-            </div>
-            <p class="privacy-note">Camera images are processed only in this browser and are not saved on a server.</p>
-          </section>
-
-          <h2>Mesh Parameters</h2>
-          <label class="slider-row">
-            <span>指の太さ</span>
-            <input id="finger-width" type="range" min="50" max="180" step="5">
-            <strong id="finger-width-value"></strong>
-          </label>
-          <label class="slider-row">
-            <span>手の甲厚</span>
-            <input id="palm-thickness" type="range" min="40" max="160" step="5">
-            <strong id="palm-thickness-value"></strong>
-          </label>
-          <label class="slider-row">
-            <span>球体</span>
-            <input id="joint-radius" type="range" min="40" max="160" step="5">
-            <strong id="joint-radius-value"></strong>
-          </label>
-
-          <div class="button-row">
-            <button id="generate" type="button">Generate</button>
-            <button id="reset-landmarks" type="button">Reset Landmarks</button>
-          </div>
-
-          <h2>Manual Landmarks</h2>
-          <p class="note">21点のMediaPipe形式 [x, y, z] を入力します。Webcam Captureでは撮影時にここへ反映されます。</p>
-          <textarea id="landmarks-json" spellcheck="false"></textarea>
-        </section>
-
-        <section class="panel preview">
-          <h2>Bone Preview</h2>
-          <canvas id="bone-preview" width="560" height="560"></canvas>
-          <div id="stats" class="stats"></div>
-          <p id="status" class="status"></p>
-        </section>
+        <p class="privacy-note">Camera images are processed only in this browser and are not saved on a server.</p>
       </section>
 
-      <section class="panel output">
-        <h2>OBJ Output</h2>
-        <textarea id="obj-output" readonly spellcheck="false"></textarea>
+      <section class="card preview-card">
+        <canvas id="bone-preview" width="560" height="420"></canvas>
+      </section>
+
+      <section class="card controls-card">
+        <h1>Hand Base Mesh Generator</h1>
+
+        <div class="choice-row">
+          <label><input id="hand-right" type="radio" name="target-hand" value="Right" checked> 右手</label>
+          <label><input id="hand-left" type="radio" name="target-hand" value="Left"> 左手</label>
+        </div>
+
+        <div class="camera-controls">
+          <label>
+            Camera
+            <select id="camera-select">
+              <option value="">Default / In Camera</option>
+            </select>
+          </label>
+          <label>
+            Facing
+            <select id="facing-mode">
+              <option value="user">In camera</option>
+              <option value="environment">Rear camera</option>
+            </select>
+          </label>
+        </div>
+
+        <fieldset class="preset-box">
+          <legend>プリセット</legend>
+          <div class="preset-grid">
+            <button type="button" class="preset-button" data-preset="standard">標準</button>
+            <button type="button" class="preset-button" data-preset="wide">幅広</button>
+            <button type="button" class="preset-button" data-preset="thickPalm">甲高</button>
+            <button type="button" class="preset-button" data-preset="slim">細め</button>
+            <button type="button" class="preset-button" data-preset="longFinger">指長め</button>
+            <button type="button" class="preset-button" data-preset="smallJoint">球小</button>
+          </div>
+        </fieldset>
+
+        <div class="action-row">
+          <button id="start-camera" type="button" class="secondary-action">カメラ開始</button>
+          <button id="stop-camera" type="button" class="secondary-action" disabled>停止</button>
+          <button id="capture-camera" type="button" class="secondary-action" disabled>撮影</button>
+        </div>
+
+        <div class="action-row final-actions">
+          <button id="download" type="button" class="primary-action" disabled>OBJ作成・保存</button>
+          <button id="reset" type="button" class="reset-action">リセット</button>
+        </div>
+
+        <p id="status" class="status">Ready</p>
       </section>
     </main>
 
